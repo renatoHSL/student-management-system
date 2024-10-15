@@ -1,16 +1,33 @@
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGridLayout, QLineEdit, QPushButton, QMainWindow, \
-    QTableWidget, QTableWidgetItem, QDialog, QVBoxLayout, QComboBox, QToolBar, QStatusBar, QMessageBox
+from PyQt6.QtWidgets import QApplication, QLabel, QWidget, QGridLayout, \
+    QLineEdit, QPushButton, QMainWindow, QTableWidget, QTableWidgetItem, QDialog, \
+    QVBoxLayout, QComboBox, QToolBar, QStatusBar, QMessageBox
 from PyQt6.QtGui import QAction, QIcon
 import sys
 import sqlite3
+import mysql.connector
+
+
+class DatabaseConnection:
+    def __init__(self, host="localhost", user="root", password="admin1234", database="school"):
+        self.host = host
+        self.user = user
+        self.password = password
+        self.database = database
+
+    def connect(self):
+        connection = mysql.connector.connect(host=self.host,
+                                             user=self.user,
+                                             password=self.password,
+                                             database=self.database)
+        return connection
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Student Management System")
-        self.setMinimumSize(400, 350)
+        self.setMinimumSize(800, 600)
 
         file_menu_item = self.menuBar().addMenu("&File")
         help_menu_item = self.menuBar().addMenu("&Help")
@@ -25,7 +42,7 @@ class MainWindow(QMainWindow):
         about_action.setMenuRole(QAction.MenuRole.NoRole)
         about_action.triggered.connect(self.about)
 
-        search_action = QAction("Search", self)
+        search_action = QAction(QIcon("icons/search.png"), "Search", self)
         edit_menu_item.addAction(search_action)
         search_action.triggered.connect(self.search)
 
@@ -39,9 +56,11 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar()
         toolbar.setMovable(True)
         self.addToolBar(toolbar)
-        toolbar.addAction(add_student_action)
 
-        # Create status bar and add elements
+        toolbar.addAction(add_student_action)
+        toolbar.addAction(search_action)
+
+        # Create status bar and add status bar elements
         self.statusbar = QStatusBar()
         self.setStatusBar(self.statusbar)
 
@@ -64,8 +83,10 @@ class MainWindow(QMainWindow):
         self.statusbar.addWidget(delete_button)
 
     def load_data(self):
-        connection = sqlite3.connect("database.db")
-        result = connection.execute("SELECT * FROM students")
+        connection = DatabaseConnection().connect()
+        cursor = connection.cursor()
+        cursor.execute("SELECT * FROM students")
+        result = cursor.fetchall()
         self.table.setRowCount(0)
         for row_number, row_data in enumerate(result):
             self.table.insertRow(row_number)
@@ -97,12 +118,13 @@ class MainWindow(QMainWindow):
 class AboutDialog(QMessageBox):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Title")
+        self.setWindowTitle("About")
         content = """
         This app was created during the course "The Python Mega Course".
         Feel free to modify and reuse this app.
         """
         self.setText(content)
+
 
 class EditDialog(QDialog):
     def __init__(self):
@@ -146,9 +168,9 @@ class EditDialog(QDialog):
         self.setLayout(layout)
 
     def update_student(self):
-        connection = sqlite3.connect("database.db")
+        connection = DatabaseConnection().connect()
         cursor = connection.cursor()
-        cursor.execute("UPDATE students SET name = ?, course = ?, mobile = ? WHERE id = ?",
+        cursor.execute("UPDATE students SET name = %s, course = %s, mobile = %s WHERE id = %s",
                        (self.student_name.text(),
                         self.course_name.itemText(self.course_name.currentIndex()),
                         self.mobile.text(),
@@ -185,7 +207,7 @@ class DeleteDialog(QDialog):
 
         connection = sqlite3.connect("database.db")
         cursor = connection.cursor()
-        cursor.execute("DELETE from students WHERE id = ?", (student_id,))
+        cursor.execute("DELETE from students WHERE id = %s", (student_id,))
         connection.commit()
         cursor.close()
         connection.close()
@@ -215,7 +237,7 @@ class InsertDialog(QDialog):
 
         # Add combo box of courses
         self.course_name = QComboBox()
-        courses = ["Bioology", "Math", "Astronomy", "Physics"]
+        courses = ["Biology", "Math", "Astronomy", "Physics"]
         self.course_name.addItems(courses)
         layout.addWidget(self.course_name)
 
@@ -235,9 +257,9 @@ class InsertDialog(QDialog):
         name = self.student_name.text()
         course = self.course_name.itemText(self.course_name.currentIndex())
         mobile = self.mobile.text()
-        connection = sqlite3.connect("database.db")
+        connection = DatabaseConnection().connect()
         cursor = connection.cursor()
-        cursor.execute("INSERT INTO students (name, course, mobile) VALUES (?, ?, ?)",
+        cursor.execute("INSERT INTO students (name, course, mobile) VALUES (%s, %s, %s)",
                        (name, course, mobile))
         connection.commit()
         cursor.close()
@@ -258,19 +280,20 @@ class SearchDialog(QDialog):
         self.student_name = QLineEdit()
         self.student_name.setPlaceholderText("Name")
         layout.addWidget(self.student_name)
-        #
+
         # Create button
         button = QPushButton("Search")
         button.clicked.connect(self.search)
         layout.addWidget(button)
-        #
+
         self.setLayout(layout)
 
     def search(self):
         name = self.student_name.text()
-        connection = sqlite3.connect("database.db")
+        connection = DatabaseConnection().connect()
         cursor = connection.cursor()
-        result = cursor.execute("SELECT * FROM students WHERE name = ?", (name,))
+        cursor.execute("SELECT * FROM students WHERE name = %s", (name,))
+        result = cursor.fetchall()
         rows = list(result)
         print(rows)
         items = main_window.table.findItems(name, Qt.MatchFlag.MatchFixedString)
